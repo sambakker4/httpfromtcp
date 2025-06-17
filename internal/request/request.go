@@ -5,15 +5,21 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/sambakker4/httpfromtcp/internal/headers"
 )
 
 type Request struct {
 	RequestLine RequestLine
-	Enum          int
+	Headers      headers.Headers
+	state       int
 }
 
-const initialized = 1
-const done = 2
+const (
+	requestStateInitialized = iota
+	requestStateParsingHeaders
+	requestStateDone          
+)
 const bufferSize = 8
 
 type RequestLine struct {
@@ -26,18 +32,18 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize, bufferSize)
 	readToIndex := 0
 
-	req := Request{Enum: initialized}
+	req := Request{state: requestStateInitialized, Headers: headers.NewHeaders()}
 
-	for req.Enum != done {
+	for req.state != requestStateDone {
 		if len(buf) == cap(buf) {
-			newBuffer := make([]byte, len(buf) * 2, len(buf) * 2)
+			newBuffer := make([]byte, len(buf)*2, len(buf)*2)
 			copy(newBuffer, buf)
 			buf = newBuffer
 		}
 
 		n, err := reader.Read(buf[readToIndex:])
 		if errors.Is(err, io.EOF) {
-			req.Enum = done
+			req.state = requestStateDone
 			break
 		}
 
@@ -105,7 +111,24 @@ func parseRequestLine(s []byte) (*RequestLine, int, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	if r.Enum == initialized {
+	totalBytesParsed := 0
+	for r.state != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return totalBytesParsed, nil
+		}
+
+		totalBytesParsed += n
+	}
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
+	switch r.state {
+	case requestStateInitialized:
 		newRequestLine, n, err := parseRequestLine(data)
 
 		if err != nil {
@@ -117,13 +140,28 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		r.RequestLine = *newRequestLine
-		r.Enum = done
-		return len(data), nil
-	}
+		r.state = requestStateParsingHeaders
+		return n, nil
 
-	if r.Enum == done {
-		return 0, errors.New("error: trying to read data from a done state")
-	}
+	case requestStateParsingHeaders:
+		n, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, err
+		}
+		
+		if n == 0 {
+			return 0, nil
+		}
+		
+		if done {
+			r.state = requestStateDone
+		}
+		return n, nil
 
-	return 0, errors.New("error: unknown state")
+	case requestStateDone:
+		return 0, errors.New("error: trying to read data from a requestStateDone state")
+
+	default:
+		return 0, errors.New("error: unknown state")
+	}
 }
