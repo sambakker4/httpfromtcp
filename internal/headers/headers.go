@@ -2,8 +2,8 @@ package headers
 
 import (
 	"errors"
-	"strings"
 	"regexp"
+	"strings"
 )
 
 type Headers map[string]string
@@ -18,9 +18,6 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	line := strings.Split(string(data), "\r\n")
-	if !(len(line) > 1) {
-		done = true
-	}
 
 	str := strings.TrimSpace(line[0])
 	header := strings.SplitN(str, ":", 2)
@@ -40,6 +37,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	n = len(line[0]) + len("\r\n")
 	err = nil
+	done = false
 	value = strings.TrimSpace(value)
 
 	if h.Get(key) != "" {

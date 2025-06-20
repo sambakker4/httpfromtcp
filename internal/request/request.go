@@ -35,33 +35,40 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := Request{state: requestStateInitialized, Headers: headers.NewHeaders()}
 
 	for req.state != requestStateDone {
-		if len(buf) == cap(buf) {
-			newBuffer := make([]byte, len(buf)*2, len(buf)*2)
+		if readToIndex == len(buf) {
+			newBuffer := make([]byte, len(buf)*2, cap(buf)*2)
 			copy(newBuffer, buf)
 			buf = newBuffer
 		}
 
-		n, err := reader.Read(buf[readToIndex:])
+		numRead, err := reader.Read(buf[readToIndex:])
 		if errors.Is(err, io.EOF) {
-			req.state = requestStateDone
 			break
 		}
 
 		if err != nil {
 			return &Request{}, err
 		}
+		
+		readToIndex += numRead
 
-		readToIndex += n
-
-		n, err = req.parse(buf[:readToIndex])
+		numParsed, err := req.parse(buf[:readToIndex])
 		if err != nil {
 			return &Request{}, err
 		}
 
-		newSlice := make([]byte, len(buf[n:]), cap(buf))
-		copy(newSlice, buf[n:])
-		buf = newSlice
-		readToIndex -= n
+		if numParsed > 0 && numParsed < readToIndex {
+			copy(buf, buf[numParsed:readToIndex])
+			readToIndex -= numParsed
+		} else if numParsed >= readToIndex {
+			// All data was consumed
+			readToIndex = 0
+		}
+
+	}
+
+	if req.state != requestStateDone {
+		return &Request{}, errors.New("error: end of file not found")
 	}
 
 	return &req, nil
@@ -117,6 +124,7 @@ func (r *Request) parse(data []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		if n == 0 {
 			return totalBytesParsed, nil
 		}
@@ -148,14 +156,16 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
+		if done {
+			r.state = requestStateDone
+		} 
 		
 		if n == 0 {
 			return 0, nil
 		}
-		
-		if done {
-			r.state = requestStateDone
-		}
+
+
 		return n, nil
 
 	case requestStateDone:
