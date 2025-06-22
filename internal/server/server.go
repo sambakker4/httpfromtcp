@@ -1,19 +1,32 @@
 package server
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net"
-	"sync/atomic"
 	"strconv"
+	"sync/atomic"
+
+	"github.com/sambakker4/httpfromtcp/internal/request"
 	"github.com/sambakker4/httpfromtcp/internal/response"
 )
-type Server struct {
-	Listener net.Listener	
-	isClosed *atomic.Bool
+
+type Handler func(w io.Writer, req *request.Request) *HandlerError
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
 }
 
-func Serve(port int) (*Server, error) {
-	listener, err := net.Listen("tcp", ":" + strconv.Itoa(port))
+type Server struct {
+	Listener    net.Listener
+	isClosed    *atomic.Bool
+	HandlerFunc Handler
+}
+
+func Serve(port int, handler Handler) (*Server, error) {
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		return &Server{}, err
 	}
@@ -21,9 +34,11 @@ func Serve(port int) (*Server, error) {
 	isClosed := &atomic.Bool{}
 	isClosed.Store(false)
 
+
 	server := &Server{
 		Listener: listener,
 		isClosed: isClosed,
+		HandlerFunc: handler,
 	}
 
 	go server.listen()
@@ -52,20 +67,54 @@ func (s *Server) listen() {
 	}
 }
 
+func WriteHandlerError(w io.Writer, handlerError *HandlerError) {
+	err := response.WriteStatusLine(w, handlerError.StatusCode)
+	if err != nil {
+		log.Printf("error: %s\n", err.Error())
+	}
+
+	headers := response.GetDefaultHeaders(len(handlerError.Message))
+	err = response.WriteHeaders(w, headers)
+	if err != nil {
+		log.Printf("error: %s\n", err.Error())
+	}
+
+	_, err = w.Write([]byte(handlerError.Message))
+	if err != nil {
+		log.Printf("error: %s\n", err.Error())
+	}
+
+}
+
 func (s *Server) handle(conn net.Conn) {
-	headers := response.GetDefaultHeaders(0)
-	err := response.WriteStatusLine(conn, 200)
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Printf("error writing status line: %s\n", err.Error())
+		log.Printf("request error: %s", err.Error())
 	}
-	err = response.WriteHeaders(conn, headers)
-	if err != nil {
-		log.Printf("error writing headers: %s\n", err.Error())
+
+	buf := bytes.NewBuffer(make([]byte, 0))
+	handlerErr := s.HandlerFunc(buf, req)
+
+	if handlerErr != nil {
+		WriteHandlerError(conn, handlerErr)
+	} else {
+		headers := response.GetDefaultHeaders(len(buf.Bytes()))
+		err = response.WriteStatusLine(conn, response.Success)
+		if err != nil {
+			log.Printf("error writing status line: %s\n", err.Error())
+		}
+
+		err = response.WriteHeaders(conn, headers)
+		if err != nil {
+			log.Printf("error writing headers: %s\n", err.Error())
+		}
+
+		_, err = conn.Write(buf.Bytes())
+		if err != nil {
+			log.Printf("error writing body: %s\n", err.Error())
+		}
 	}
-	_, err = conn.Write([]byte{})
-	if err != nil {
-		log.Printf("error writing body: %s\n", err.Error())
-	}
+
 	err = conn.Close()
 	if err != nil {
 		log.Printf("closing connection error: %s\n", err.Error())
