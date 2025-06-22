@@ -194,7 +194,6 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 		return 0, nil
 
-
 	case requestStateDone:
 		return 0, errors.New("error: trying to read data from a requestStateDone state")
 

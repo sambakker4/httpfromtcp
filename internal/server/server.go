@@ -1,8 +1,6 @@
 package server
 
 import (
-	"bytes"
-	"io"
 	"log"
 	"net"
 	"strconv"
@@ -12,7 +10,7 @@ import (
 	"github.com/sambakker4/httpfromtcp/internal/response"
 )
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 type HandlerError struct {
 	StatusCode response.StatusCode
@@ -34,10 +32,9 @@ func Serve(port int, handler Handler) (*Server, error) {
 	isClosed := &atomic.Bool{}
 	isClosed.Store(false)
 
-
 	server := &Server{
-		Listener: listener,
-		isClosed: isClosed,
+		Listener:    listener,
+		isClosed:    isClosed,
 		HandlerFunc: handler,
 	}
 
@@ -67,56 +64,17 @@ func (s *Server) listen() {
 	}
 }
 
-func WriteHandlerError(w io.Writer, handlerError *HandlerError) {
-	err := response.WriteStatusLine(w, handlerError.StatusCode)
-	if err != nil {
-		log.Printf("error: %s\n", err.Error())
-	}
-
-	headers := response.GetDefaultHeaders(len(handlerError.Message))
-	err = response.WriteHeaders(w, headers)
-	if err != nil {
-		log.Printf("error: %s\n", err.Error())
-	}
-
-	_, err = w.Write([]byte(handlerError.Message))
-	if err != nil {
-		log.Printf("error: %s\n", err.Error())
-	}
-
-}
-
 func (s *Server) handle(conn net.Conn) {
+	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
 		log.Printf("request error: %s", err.Error())
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0))
-	handlerErr := s.HandlerFunc(buf, req)
-
-	if handlerErr != nil {
-		WriteHandlerError(conn, handlerErr)
-	} else {
-		headers := response.GetDefaultHeaders(len(buf.Bytes()))
-		err = response.WriteStatusLine(conn, response.Success)
-		if err != nil {
-			log.Printf("error writing status line: %s\n", err.Error())
-		}
-
-		err = response.WriteHeaders(conn, headers)
-		if err != nil {
-			log.Printf("error writing headers: %s\n", err.Error())
-		}
-
-		_, err = conn.Write(buf.Bytes())
-		if err != nil {
-			log.Printf("error writing body: %s\n", err.Error())
-		}
+	writer := response.Writer{
+		Writer: conn,
 	}
 
-	err = conn.Close()
-	if err != nil {
-		log.Printf("closing connection error: %s\n", err.Error())
-	}
+	s.HandlerFunc(&writer, req)
+	return
 }

@@ -1,13 +1,13 @@
 package main
 
 import (
+	"github.com/sambakker4/httpfromtcp/internal/request"
+	"github.com/sambakker4/httpfromtcp/internal/response"
+	"github.com/sambakker4/httpfromtcp/internal/server"
 	"log"
 	"os"
 	"os/signal"
-	"io"
 	"syscall"
-	"github.com/sambakker4/httpfromtcp/internal/request"
-	"github.com/sambakker4/httpfromtcp/internal/server"
 )
 
 const port = 42069
@@ -26,20 +26,55 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handler(w io.Writer, req *request.Request) *server.HandlerError {
-	switch req.RequestLine.RequestTarget{
+func handler(w *response.Writer, req *request.Request) {
+	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
-		return &server.HandlerError{
-			Message: "Your problem is not my problem\n",
-			StatusCode: 400,
-		}
+		html := `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>
+`
+		headers := response.GetDefaultHeaders(len([]byte(html)))
+		headers.Set("Content-type", "text/html")
+		w.WriteStatusLine(400)
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(html))
 	case "/myproblem":
-		return &server.HandlerError{
-			Message: "Woopsie, my bad\n",
-			StatusCode: 500,
-		}
+		html := `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>
+`
+		headers := response.GetDefaultHeaders(len([]byte(html)))
+		headers.Set("Content-type", "text/html")
+		w.WriteStatusLine(500)
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(html))
 	default:
-		w.Write([]byte("All good, frfr\n"))
-		return nil
+		html := `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>
+`
+		headers := response.GetDefaultHeaders(len([]byte(html)))
+		headers.Set("Content-type", "text/html")
+		w.WriteStatusLine(200)
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(html))
 	}
 }
