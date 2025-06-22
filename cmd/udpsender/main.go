@@ -3,12 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"log"
 	"net"
+	"os"
 )
 
-func main(){
+func main() {
 	address, err := net.ResolveUDPAddr("udp", ":42069")
 	if err != nil {
 		log.Fatal(err)
@@ -24,12 +24,12 @@ func main(){
 
 	for {
 		fmt.Printf("> ")
-		
+
 		input, err := reader.ReadString('\n')
 		_, err = connection.Write([]byte(input))
-			
+
 		if err != nil {
-			fmt.Printf("error: %s\n", err.Error())	
+			fmt.Printf("error: %s\n", err.Error())
 		}
 	}
 }

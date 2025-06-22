@@ -14,7 +14,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	if strings.Index(string(data), "\r\n") == 0 {
-		return 0, true, nil
+		return len("\r\n"), true, nil
 	}
 
 	line := strings.Split(string(data), "\r\n")
@@ -26,7 +26,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	key, value := header[0], header[1]
-	if key[len(key) - 1] == ' ' {
+	if key[len(key)-1] == ' ' {
 		return 0, false, errors.New("error: header format must be <key>: <value>")
 	}
 
@@ -41,19 +41,19 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	value = strings.TrimSpace(value)
 
 	if h.Get(key) != "" {
-		h[strings.ToLower(key)] = h.Get(key) + ", " + value 
+		h[strings.ToLower(key)] = h.Get(key) + ", " + value
 		return
 	}
 
 	h[strings.ToLower(key)] = value
 	return
-} 
+}
 
-func NewHeaders() Headers{
+func NewHeaders() Headers {
 	return Headers{}
 }
 
-func (h Headers) Get(s string) string{
+func (h Headers) Get(s string) string {
 	val, ok := h[strings.ToLower(s)]
 	if !ok {
 		return ""

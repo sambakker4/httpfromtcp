@@ -3,6 +3,7 @@ package request
 import (
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -11,22 +12,24 @@ import (
 
 type Request struct {
 	RequestLine RequestLine
-	Headers      headers.Headers
+	Headers     headers.Headers
+	Body        []byte
 	state       int
 }
-
-const (
-	requestStateInitialized = iota
-	requestStateParsingHeaders
-	requestStateDone          
-)
-const bufferSize = 8
 
 type RequestLine struct {
 	HttpVersion   string
 	RequestTarget string
 	Method        string
 }
+
+const (
+	requestStateInitialized = iota
+	requestStateParsingHeaders
+	requestStateParsingBody
+	requestStateDone
+)
+const bufferSize = 8
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize, bufferSize)
@@ -49,7 +52,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if err != nil {
 			return &Request{}, err
 		}
-		
+
 		readToIndex += numRead
 
 		numParsed, err := req.parse(buf[:readToIndex])
@@ -66,9 +69,12 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 
 	}
+	if req.state == requestStateParsingHeaders {
+		return &Request{}, errors.New("error: end of headers not found")
+	}
 
-	if req.state != requestStateDone {
-		return &Request{}, errors.New("error: end of file not found")
+	if req.state == requestStateParsingBody {
+		return &Request{}, errors.New("error: reported content length not equal to body length")
 	}
 
 	return &req, nil
@@ -158,15 +164,36 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if done {
+			r.state = requestStateParsingBody
+		}
+
+		return n, nil
+
+	case requestStateParsingBody:
+		contentLength := r.Headers.Get("Content-Length")
+		if contentLength == "" {
+			if len(data) > 0 {
+				return 0, errors.New("error: body exists but no reported content length")
+			}
 			r.state = requestStateDone
-		} 
-		
-		if n == 0 {
 			return 0, nil
 		}
 
+		r.Body = data
+		length, err := strconv.Atoi(contentLength)
+		if err != nil {
+			return 0, errors.New("error: reported content length is not a number")
+		}
+		if len(data) > length {
+			return 0, errors.New("error: length of data is greater than content length")
+		}
 
-		return n, nil
+		if len(data) == length {
+			r.state = requestStateDone
+			return len(data), nil
+		}
+		return 0, nil
+
 
 	case requestStateDone:
 		return 0, errors.New("error: trying to read data from a requestStateDone state")

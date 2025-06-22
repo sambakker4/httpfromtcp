@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/sambakker4/httpfromtcp/internal/request"
 	"log"
 	"net"
-	"github.com/sambakker4/httpfromtcp/internal/request"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println("Connection accepted")
-			
+
 		req, err := request.RequestFromReader(connection)
 		if err != nil {
 			log.Printf("error: %s", err.Error())
@@ -36,6 +36,9 @@ func main() {
 		for key, value := range req.Headers {
 			fmt.Printf(" - %s: %s\n", key, value)
 		}
+
+		fmt.Println("Body:")
+		fmt.Println(string(req.Body))
 		fmt.Println()
 	}
 }

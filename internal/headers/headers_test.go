@@ -25,7 +25,7 @@ func TestParseHeaders(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, 0, n)
 	assert.False(t, done)
-	
+
 	// Test: Valid single header with extra whitespace
 	headers = NewHeaders()
 	data = []byte("       Host:     localhost:42069                  \r\n\r\n")
@@ -53,7 +53,7 @@ func TestParseHeaders(t *testing.T) {
 	assert.Equal(t, "hey", headers.Get("Something"))
 	assert.Equal(t, 46, n)
 	assert.False(t, done)
-	
+
 	num = n
 	n, done, err = headers.Parse(data[n:])
 	n += num
@@ -66,7 +66,7 @@ func TestParseHeaders(t *testing.T) {
 	n, done, err = headers.Parse(data[n:])
 	n += num
 	require.NoError(t, err)
-	assert.Equal(t, 82, n)
+	assert.Equal(t, 84, n)
 	assert.True(t, done)
 
 	// Test: Valid done
@@ -74,7 +74,7 @@ func TestParseHeaders(t *testing.T) {
 	data = []byte("\r\n    ")
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 2, n)
 	assert.True(t, done)
 
 	// Test: Invalid characters
