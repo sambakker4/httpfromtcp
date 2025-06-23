@@ -69,6 +69,7 @@ func (s *Server) handle(conn net.Conn) {
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
 		log.Printf("request error: %s", err.Error())
+		return
 	}
 
 	writer := response.Writer{
@@ -76,5 +77,4 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	s.HandlerFunc(&writer, req)
-	return
 }
