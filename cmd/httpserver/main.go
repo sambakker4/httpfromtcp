@@ -1,15 +1,19 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/sambakker4/httpfromtcp/internal/headers"
 	"github.com/sambakker4/httpfromtcp/internal/request"
 	"github.com/sambakker4/httpfromtcp/internal/response"
 	"github.com/sambakker4/httpfromtcp/internal/server"
@@ -45,28 +49,31 @@ func handler(w *response.Writer, req *request.Request) {
 			log.Printf("error: %v\n", err)
 		}
 
-		headers := response.GetDefaultHeaders(0)
-		headers.Set("Transfer-Encoding", "chunked")
-		delete(headers, "content-length")
+		hdrs := response.GetDefaultHeaders(0)
+		hdrs.Set("Transfer-Encoding", "chunked")
+		hdrs.Set("Trailer", "X-Content-SHA256, X-Content-Length")
+		delete(hdrs, "content-length")
 
-		err = w.WriteHeaders(headers)
+		err = w.WriteHeaders(hdrs)
 
 		if err != nil {
 			log.Printf("error: %v\n", err)
 		}
+		fullResponse := ""
 
 		buf := make([]byte, 1024)
 		n := -1
 		for n != 0 {
-			_, err = resp.Body.Read(buf)
+			n, err = resp.Body.Read(buf)
 			if err != nil {
 				if errors.Is(io.EOF, err) {
 					break
 				}
 				log.Printf("error: %v\n", err)
 			}
+			fullResponse += string(buf[:n])
 
-			n, err = w.WriteChunkedBody(buf)
+			n, err = w.WriteChunkedBody(buf[:n])
 			if err != nil {
 				log.Printf("error: %v\n", err)
 			}
@@ -76,6 +83,19 @@ func handler(w *response.Writer, req *request.Request) {
 		if err != nil {
 			log.Printf("error: %v\n", err)
 		}
+
+		hash := sha256.Sum256([]byte(fullResponse))
+		length := len(fullResponse)
+		
+		headers := headers.NewHeaders()
+		headers.Set("X-Content-SHA256", fmt.Sprintf("%x", hash))
+		headers.Set("X-Content-Length", strconv.Itoa(length))
+
+		err = w.WriteTrailers(headers)
+		if err != nil {
+			log.Printf("error: %v\n", err)
+		}
+		
 		return
 	}
 	switch req.RequestLine.RequestTarget {
