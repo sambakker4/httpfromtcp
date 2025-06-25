@@ -26,6 +26,9 @@ func main() {
 		fmt.Printf("> ")
 
 		input, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("error: %s\n", err.Error())
+		}
 		_, err = connection.Write([]byte(input))
 
 		if err != nil {
